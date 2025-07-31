@@ -46,8 +46,8 @@ app.get('/listar-todos-cpr', async (req, res, next) => {
   }
 });
 
-/// Listar todos os PCS de determinado CPR
-app.get('/listar-pcs-por-cpr', async (req, res) => {
+
+app.get('/listar-bpm-por-cpr', async (req, res) => {
   const { cpr: ID_CPR } = req.query;
 
   if (!ID_CPR) {
@@ -57,7 +57,7 @@ app.get('/listar-pcs-por-cpr', async (req, res) => {
   try {
     const connection = await pool.getConnection();
 
-    const selectQuery = `SELECT ID_PCS, DS_PCS FROM comissaopcsdb.TB_PCS WHERE ID_CPR = ?`;
+    const selectQuery = `SELECT ID_BPM, DS_BPM FROM comissaopcsdb.TB_BPM WHERE ID_CPR = ?`;
     const [rows] = await connection.execute(selectQuery, [ID_CPR]);
     
     connection.release();
@@ -67,6 +67,31 @@ app.get('/listar-pcs-por-cpr', async (req, res) => {
     });
   } catch (error) {
     console.error("Erro ao listar PCS por CPR:", error);
+    res.status(500).json({ message: "Erro ao listar PCS." });
+  }
+});
+
+/// Listar todos os PCS de determinado CPR
+app.get('/listar-pcs-por-bpm', async (req, res) => {
+  const { bpm: ID_BPM } = req.query;
+
+  if (!ID_BPM) {
+    return res.status(400).json({ message: 'Parâmetro "bpm" (ID_BPM) é obrigatório.' });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+
+    const selectQuery = `SELECT ID_PCS, DS_PCS FROM comissaopcsdb.TB_PCS WHERE ID_BPM = ?`;
+    const [rows] = await connection.execute(selectQuery, [ID_BPM]);
+    
+    connection.release();
+
+    res.status(200).json({
+      response: rows
+    });
+  } catch (error) {
+    console.error("Erro ao listar PCS por BPM:", error);
     res.status(500).json({ message: "Erro ao listar PCS." });
   }
 });
@@ -134,6 +159,21 @@ app.post('/cadastrar-patrimonio', async function(req, res) {
     console.error("Erro ao inserir patrimônio:", error);
     res.status(500).json({
       message: "Erro ao cadastrar patrimônio.",
+      error: error.message,
+    });
+  }
+});
+
+//cadastrar patrimonio
+app.post('/upload-arquivos-bucket', async function(req, res) {
+  try {
+    
+    res.status(200).json({ message: "Upload Realizado com Sucesso." });
+    
+  } catch (error) {
+    console.error("Erro ao inserir arquivos:", error);
+    res.status(500).json({
+      message: "Erro ao cadastrar arquivos.",
       error: error.message,
     });
   }
