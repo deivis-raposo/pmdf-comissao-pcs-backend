@@ -3,10 +3,30 @@ const express = require('express');
 const mysql = require("mysql2/promise");
 const cors = require("cors");
 
-const app = express();
-app.use(express.json());
-app.use(cors());
+// Novo SDK modular da AWS
+const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const s3 = new S3Client({ region: process.env.AWS_REGION || "us-east-1" });
 
+const app = express();
+
+// ✅ Configuração CORS global
+app.use(cors({
+  origin: "*", // Para produção, usar domínio fixo
+  methods: "GET,POST,PUT,DELETE,OPTIONS",
+  allowedHeaders: "Content-Type,Authorization"
+}));
+
+// ✅ Middleware para OPTIONS (preflight)
+app.options('*', (req, res) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  res.sendStatus(200);
+});
+
+app.use(express.json());
+
+// 🔹 Configuração do pool MySQL
 const pool = mysql.createPool({
   host: process.env.DB_HOST || "comissaopcsdb.czewyygo05lq.us-east-2.rds.amazonaws.com",
   user: process.env.DB_USER || "admin",
@@ -18,7 +38,7 @@ const pool = mysql.createPool({
 });
 
 /**
- * Utilitário para resposta padronizada
+ * Função utilitária para resposta padronizada
  */
 const sendResponse = (res, success, message, severity, data = null, statusCode = 200) => {
   res.status(statusCode).json({ success, message, severity, data });
@@ -213,6 +233,52 @@ app.post('/cadastrar-patrimonio', async (req, res) => {
   } catch (error) {
     console.error('Erro ao cadastrar/atualizar patrimônio:', error);
     sendResponse(res, false, "Erro interno ao cadastrar/atualizar patrimônio.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+/**
+ * Excluir patrimônio (TB_PATRIMONIO, TB_ARQUIVO e arquivos no S3)
+ */
+app.delete('/excluir-patrimonio', async (req, res) => {
+  const { id } = req.query;
+  if (!id) {
+    return sendResponse(res, false, 'Parâmetro "id" é obrigatório.', "warning", null, 400);
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+
+    // Buscar arquivos vinculados
+    const [arquivos] = await connection.execute(`
+      SELECT URL_ARQUIVO_BUCKET 
+      FROM TB_ARQUIVO 
+      WHERE ID_PATRIMONIO = ?
+    `, [id]);
+
+    // Remover arquivos do S3
+    for (const arq of arquivos) {
+      try {
+        const key = decodeURIComponent(arq.URL_ARQUIVO_BUCKET.split('.amazonaws.com/')[1]);
+        await s3.send(new DeleteObjectCommand({
+          Bucket: process.env.BUCKET_NAME || 'bucketpmdfcomissaopcs75f9a-dev',
+          Key: key
+        }));
+      } catch (err) {
+        console.error(`Erro ao remover arquivo do S3 (${arq.URL_ARQUIVO_BUCKET}):`, err);
+      }
+    }
+
+    // Remover registros do banco
+    await connection.execute(`DELETE FROM TB_ARQUIVO WHERE ID_PATRIMONIO = ?`, [id]);
+    await connection.execute(`DELETE FROM TB_PATRIMONIO WHERE ID_PATRIMONIO = ?`, [id]);
+
+    sendResponse(res, true, "Patrimônio e arquivos excluídos com sucesso.", "success");
+  } catch (error) {
+    console.error('Erro ao excluir patrimônio:', error);
+    sendResponse(res, false, "Erro interno ao excluir patrimônio.", "error", null, 500);
   } finally {
     if (connection) connection.release();
   }
