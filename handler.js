@@ -1,189 +1,221 @@
 const serverless = require("serverless-http");
 const express = require('express');
 const mysql = require("mysql2/promise");
-const bodyParser = require("body-parser");
-const app = express();
 const cors = require("cors");
+
+const app = express();
 app.use(express.json());
 app.use(cors());
 
-
 const pool = mysql.createPool({
-  host: "comissaopcsdb.czewyygo05lq.us-east-2.rds.amazonaws.com",
-  user: "admin",
-  password: "#passDB2025!",
-  database: "comissaopcsdb",
+  host: process.env.DB_HOST || "comissaopcsdb.czewyygo05lq.us-east-2.rds.amazonaws.com",
+  user: process.env.DB_USER || "admin",
+  password: process.env.DB_PASSWORD || "#passDB2025!",
+  database: process.env.DB_NAME || "comissaopcsdb",
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
 });
 
-app.get("/", (req, res, next) => {
-  return res.status(200).json({
-    message: "Hello from root!",
-  });
-});
+/**
+ * Utilitário para resposta padronizada
+ */
+const sendResponse = (res, success, message, severity, data = null, statusCode = 200) => {
+  res.status(statusCode).json({ success, message, severity, data });
+};
 
-app.get("/hello", (req, res, next) => {
-  return res.status(200).json({
-    message: "Hello from path!",
-  });
-});
-
-//listar todos CPRs
-app.get('/listar-todos-cpr', async (req, res, next) => {
+/**
+ * Listar todos CPRs
+ */
+app.get('/listar-todos-cpr', async (req, res) => {
+  let connection;
   try {
-    const connection = await pool.getConnection();
-    const selectQuery = `select * from comissaopcsdb.TB_CPR`;
-    const [rows, fields] = await connection.execute(selectQuery);
-    res.status(200).json({
-      response: rows
-    });
-    connection.release();
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`SELECT * FROM TB_CPR`);
+    sendResponse(res, true, "Lista de CPRs carregada com sucesso.", "success", rows);
   } catch (error) {
-    console.error("Erro ao listar todos CPR's cadastrados:", error);
-    res.status(500).json({ message: "Erro ao listar CPR's." });
+    console.error("Erro ao listar CPRs:", error);
+    sendResponse(res, false, "Erro ao carregar CPRs.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
   }
 });
 
-
+/**
+ * Listar BPM por CPR
+ */
 app.get('/listar-bpm-por-cpr', async (req, res) => {
   const { cpr: ID_CPR } = req.query;
+  if (!ID_CPR) return sendResponse(res, false, 'Parâmetro "cpr" é obrigatório.', "warning", null, 400);
 
-  if (!ID_CPR) {
-    return res.status(400).json({ message: 'Parâmetro "cpr" (ID_CPR) é obrigatório.' });
-  }
-
+  let connection;
   try {
-    const connection = await pool.getConnection();
-
-    const selectQuery = `SELECT ID_BPM, DS_BPM FROM comissaopcsdb.TB_BPM WHERE ID_CPR = ?`;
-    const [rows] = await connection.execute(selectQuery, [ID_CPR]);
-    
-    connection.release();
-
-    res.status(200).json({
-      response: rows
-    });
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`SELECT ID_BPM, DS_BPM FROM TB_BPM WHERE ID_CPR = ?`, [ID_CPR]);
+    sendResponse(res, true, "Lista de BPMs carregada com sucesso.", "success", rows);
   } catch (error) {
-    console.error("Erro ao listar PCS por CPR:", error);
-    res.status(500).json({ message: "Erro ao listar PCS." });
+    console.error("Erro ao listar BPMs:", error);
+    sendResponse(res, false, "Erro ao carregar BPMs.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
   }
 });
 
-/// Listar todos os PCS de determinado CPR
+/**
+ * Listar PCS por BPM
+ */
 app.get('/listar-pcs-por-bpm', async (req, res) => {
   const { bpm: ID_BPM } = req.query;
+  if (!ID_BPM) return sendResponse(res, false, 'Parâmetro "bpm" é obrigatório.', "warning", null, 400);
 
-  if (!ID_BPM) {
-    return res.status(400).json({ message: 'Parâmetro "bpm" (ID_BPM) é obrigatório.' });
-  }
-
+  let connection;
   try {
-    const connection = await pool.getConnection();
-
-    const selectQuery = `SELECT ID_PCS, DS_PCS FROM comissaopcsdb.TB_PCS WHERE ID_BPM = ?`;
-    const [rows] = await connection.execute(selectQuery, [ID_BPM]);
-    
-    connection.release();
-
-    res.status(200).json({
-      response: rows
-    });
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`SELECT ID_PCS, DS_PCS FROM TB_PCS WHERE ID_BPM = ?`, [ID_BPM]);
+    sendResponse(res, true, "Lista de PCS carregada com sucesso.", "success", rows);
   } catch (error) {
-    console.error("Erro ao listar PCS por BPM:", error);
-    res.status(500).json({ message: "Erro ao listar PCS." });
+    console.error("Erro ao listar PCS:", error);
+    sendResponse(res, false, "Erro ao carregar PCS.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
   }
 });
 
-
-
-//listar todos patrimonios
-app.get('/listar-todos-patrimonios', async (req, res, next) => {
+/**
+ * Listar todos patrimônios
+ */
+app.get('/listar-todos-patrimonios', async (req, res) => {
+  let connection;
   try {
-    const connection = await pool.getConnection();
-    const selectQuery = `select * from comissaopcsdb.TB_PATRIMONIO`;
-    const [rows, fields] = await connection.execute(selectQuery);
-    res.status(200).json({
-      response: rows
-    });
-    connection.release();
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`
+      SELECT p.*, c.DS_CPR, b.DS_BPM, s.DS_PCS
+      FROM TB_PATRIMONIO p
+      LEFT JOIN TB_CPR c ON p.ID_CPR = c.ID_CPR
+      LEFT JOIN TB_BPM b ON p.ID_BPM = b.ID_BPM
+      LEFT JOIN TB_PCS s ON p.ID_PCS = s.ID_PCS
+    `);
+
+    if (rows.length === 0) {
+      return sendResponse(res, true, "Nenhum patrimônio encontrado na base de dados.", "info", []);
+    }
+
+    sendResponse(res, true, "Lista de patrimônios carregada com sucesso.", "success", rows);
   } catch (error) {
-    console.error("Erro ao listar todos patrimônios cadastrados:", error);
-    res.status(500).json({ message: "Erro ao listar patrimônios." });
+    console.error("Erro ao listar patrimônios:", error);
+    sendResponse(res, false, "Erro ao listar patrimônios.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
   }
 });
 
-//cadastrar patrimonio
-app.post('/cadastrar-patrimonio', async function(req, res) {
+/**
+ * Consultar patrimônio
+ */
+app.get('/consultar-patrimonio', async (req, res) => {
+  const { cpr, bpm, pcs } = req.query;
+  if (!cpr || !bpm || !pcs) {
+    return sendResponse(res, false, 'Parâmetros obrigatórios: cpr, bpm, pcs', "warning", null, 400);
+  }
+
+  let connection;
+  try {
+    connection = await pool.getConnection();
+
+    const [rows] = await connection.execute(`
+      SELECT ID_PATRIMONIO, TX_LOCALIZACAO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO
+      FROM TB_PATRIMONIO
+      WHERE ID_CPR = ? AND ID_BPM = ? AND ID_PCS = ?
+      LIMIT 1
+    `, [cpr, bpm, pcs]);
+
+    if (rows.length === 0) {
+      return sendResponse(res, true, "Nenhum patrimônio encontrado para os parâmetros informados.", "info", { encontrado: false });
+    }
+
+    const patrimonio = rows[0];
+    const [arquivos] = await connection.execute(`
+      SELECT ID_ARQUIVO, NM_ARQUIVO, URL_ARQUIVO_BUCKET, TP_ARQUIVO, TAM_ARQUIVO, DT_UPLOAD_ARQUIVO
+      FROM TB_ARQUIVO
+      WHERE ID_PATRIMONIO = ?
+    `, [patrimonio.ID_PATRIMONIO]);
+
+    sendResponse(res, true, "Patrimônio encontrado.", "success", {
+      encontrado: true,
+      patrimonio: { ...patrimonio, arquivos }
+    });
+  } catch (error) {
+    console.error('Erro ao consultar patrimônio:', error);
+    sendResponse(res, false, "Erro ao consultar patrimônio.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+/**
+ * Cadastrar/Atualizar patrimônio
+ */
+app.post('/cadastrar-patrimonio', async (req, res) => {
   const {
-    id_unidade,
-    id_pcs,
-    tx_localizacao,
-    st_modulo,
-    st_base,
-    st_torre,
-    tx_informacoes,
-    id_arquivo_modulo = null,
-    id_arquivo_base = null,
-    id_arquivo_torre = null,
-    id_arquivo_diversos = null
+    ID_CPR, ID_BPM, ID_PCS,
+    TX_LOCALIZACAO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO,
+    TX_OBSERVACAO, arquivos = []
   } = req.body;
-  
+
+  if (!ID_CPR || !ID_BPM || !ID_PCS) {
+    return sendResponse(res, false, 'Campos obrigatórios: ID_CPR, ID_BPM, ID_PCS', "warning", null, 400);
+  }
+
+  let connection;
   try {
-    console.log("Body recebido:", req.body);
-    const connection = await pool.getConnection();
-    const insertQuery = `INSERT INTO comissaopcsdb.tb_inventario (
-                              id_inventario, id_unidade, id_pcs, tx_localizacao, st_modulo, st_base, st_torre, tx_informacoes,
-                              id_arquivo_modulo, id_arquivo_base, id_arquivo_torre, id_arquivo_diversos
-                            ) VALUES (
-                              null, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                            );`;
+    connection = await pool.getConnection();
 
-    const values = [  id_unidade,
-                      id_pcs,
-                      tx_localizacao,
-                      st_modulo,
-                      st_base,
-                      st_torre,
-                      tx_informacoes,
-                      id_arquivo_modulo,
-                      id_arquivo_base,
-                      id_arquivo_torre,
-                      id_arquivo_diversos ];
+    const [patrimonioExistente] = await connection.execute(`
+      SELECT ID_PATRIMONIO FROM TB_PATRIMONIO
+      WHERE ID_CPR = ? AND ID_BPM = ? AND ID_PCS = ?
+      LIMIT 1
+    `, [ID_CPR, ID_BPM, ID_PCS]);
 
-    const [rows, fields] = await connection.execute(insertQuery, values);
-    res.status(200).json({ message: "Patrimônio cadastrado com sucesso!" });
-    connection.release();
+    let patrimonioId;
+    let msg;
+
+    if (patrimonioExistente.length > 0) {
+      patrimonioId = patrimonioExistente[0].ID_PATRIMONIO;
+      await connection.execute(`
+        UPDATE TB_PATRIMONIO
+        SET TX_LOCALIZACAO = ?, ST_MODULO_LOCALIZADO = ?, ST_BASE_LOCALIZADO = ?, 
+            ST_TORRE_LOCALIZADO = ?, TX_OBSERVACAO = ?
+        WHERE ID_PATRIMONIO = ?
+      `, [TX_LOCALIZACAO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO, patrimonioId]);
+      msg = 'Patrimônio atualizado com sucesso!';
+    } else {
+      const [result] = await connection.execute(`
+        INSERT INTO TB_PATRIMONIO (
+          ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO,
+          ST_TORRE_LOCALIZADO, TX_OBSERVACAO
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO]);
+      patrimonioId = result.insertId;
+      msg = 'Patrimônio cadastrado com sucesso!';
+    }
+
+    if (arquivos.length > 0) {
+      for (const arq of arquivos) {
+        await connection.execute(`
+          INSERT INTO TB_ARQUIVO (
+            ID_PATRIMONIO, NM_ARQUIVO, URL_ARQUIVO_BUCKET, TP_ARQUIVO, TAM_ARQUIVO
+          ) VALUES (?, ?, ?, ?, ?)
+        `, [patrimonioId, arq.nome, arq.path, arq.tipo, arq.tamanho]);
+      }
+    }
+
+    sendResponse(res, true, msg, "success", { ID_PATRIMONIO: patrimonioId });
   } catch (error) {
-    console.error("Erro ao inserir patrimônio:", error);
-    res.status(500).json({
-      message: "Erro ao cadastrar patrimônio.",
-      error: error.message,
-    });
+    console.error('Erro ao cadastrar/atualizar patrimônio:', error);
+    sendResponse(res, false, "Erro interno ao cadastrar/atualizar patrimônio.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
   }
 });
 
-//cadastrar patrimonio
-app.post('/upload-arquivos-bucket', async function(req, res) {
-  try {
-    
-    res.status(200).json({ message: "Upload Realizado com Sucesso." });
-    
-  } catch (error) {
-    console.error("Erro ao inserir arquivos:", error);
-    res.status(500).json({
-      message: "Erro ao cadastrar arquivos.",
-      error: error.message,
-    });
-  }
-});
-
-
-app.use((req, res, next) => {
-  return res.status(404).json({
-    error: "Not Found",
-  });
-});
-
-exports.handler = serverless(app);
+module.exports.handler = serverless(app);
