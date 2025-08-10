@@ -112,6 +112,7 @@ app.get("/listar-todos-patrimonios", async (req, res) => {
       LEFT JOIN TB_CPR c ON p.ID_CPR = c.ID_CPR
       LEFT JOIN TB_BPM b ON p.ID_BPM = b.ID_BPM
       LEFT JOIN TB_PCS s ON p.ID_PCS = s.ID_PCS
+      ORDER BY c.ID_CPR
     `);
     sendResponse(res, true, rows.length ? "Lista carregada." : "Nenhum patrimônio encontrado.",
                  rows.length ? "success" : "info", rows);
