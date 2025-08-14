@@ -71,52 +71,31 @@ async function fetchBuffer(url) {
 async function renderImagesTwoPerPage(doc, imagensUrls) {
   if (!imagensUrls.length) return;
 
-  const pageWidth = doc.page.width;
-  const pageHeight = doc.page.height;
   const left = doc.page.margins.left;
   const right = doc.page.width - doc.page.margins.right;
   const top = doc.page.margins.top;
   const bottom = doc.page.height - doc.page.margins.bottom;
-
   const contentWidth = right - left;
 
-  // Título apenas na primeira página de anexos
   let isFirstImagesPage = true;
 
-  // Configurações de layout
-  const gapBetweenSlots = 18; // espaço vertical entre as duas metades
-  const titleGap = 10;        // espaço após o título "Anexos (imagens)"
-  const slotTopPadding = 8;   // padding interno superior de cada metade
-  const slotBottomPadding = 8;// padding interno inferior de cada metade
-  const sidePadding = 0;      // padding horizontal (se quiser reduzir um pouco a largura)
+  const gapBetweenSlots = 18; // espaço entre as metades
+  const titleGap = 10;
+  const slotTopPadding = 8;
+  const slotBottomPadding = 8;
+  const sidePadding = 0;
 
-  // Função para desenhar uma imagem dentro de um "slot" (metade superior ou inferior)
   async function drawImageInSlot(imgUrl, slotTopY, slotBottomY) {
     const availWidth = contentWidth - 2 * sidePadding;
     const availHeight = (slotBottomY - slotTopY) - (slotTopPadding + slotBottomPadding);
-
-    // Baixa imagem
     const imgBuffer = await fetchBuffer(imgUrl);
-
-    // PDFKit detecta dimensões internamente; vamos ajustar por fit
-    // Para centralizar manualmente, precisamos testar escala.
-    // Estratégia: desenhar com fit=[availWidth, availHeight] e calcular posição central.
-    // Porém o método image() com 'fit' posiciona pelo x,y dados como canto superior esquerdo;
-    // para centralizar, vamos estimar o tamanho final:
-    // Não há retorno do tamanho final na API, então assumimos que a imagem vai caber inteira no retângulo.
-    // Vamos centralizar pela área disponível:
     const x = left + sidePadding;
     const y = slotTopY + slotTopPadding;
-
-    // Desenha dentro do retângulo mantendo proporção
     doc.image(imgBuffer, x, y, { fit: [availWidth, availHeight], align: 'center', valign: 'center' });
   }
 
-  // Percorre imagens, 2 por página
   for (let i = 0; i < imagensUrls.length; i += 2) {
-    // Nova página
     doc.addPage();
-
     let yCursor = top;
 
     if (isFirstImagesPage) {
@@ -125,32 +104,18 @@ async function renderImagesTwoPerPage(doc, imagensUrls) {
       isFirstImagesPage = false;
     }
 
-    // Calcula altura disponível para os dois slots
     const totalAvailHeight = bottom - yCursor;
     const slotHeight = (totalAvailHeight - gapBetweenSlots) / 2;
 
-    // Slot 1 (metade superior)
     const slot1Top = yCursor;
     const slot1Bottom = slot1Top + slotHeight;
 
-    // Slot 2 (metade inferior)
     const slot2Top = slot1Bottom + gapBetweenSlots;
     const slot2Bottom = slot2Top + slotHeight;
 
-    // Imagem 1
-    try {
-      await drawImageInSlot(imagensUrls[i], slot1Top, slot1Bottom);
-    } catch (_) {
-      // ignora imagem com erro
-    }
-
-    // Imagem 2 (se existir)
+    try { await drawImageInSlot(imagensUrls[i], slot1Top, slot1Bottom); } catch(_) {}
     if (i + 1 < imagensUrls.length) {
-      try {
-        await drawImageInSlot(imagensUrls[i + 1], slot2Top, slot2Bottom);
-      } catch (_) {
-        // ignora imagem com erro
-      }
+      try { await drawImageInSlot(imagensUrls[i + 1], slot2Top, slot2Bottom); } catch(_) {}
     }
   }
 }
@@ -163,26 +128,25 @@ async function makePatrimonioPDF({ patrimonio, arquivos, reportUrl, titulo = "Re
     doc.on("error", reject);
     doc.on("end", () => resolve(Buffer.concat(chunks)));
 
-    // ====== Cabeçalho com logo (opcional) ======
     const pageWidth = doc.page.width;
     const left = doc.page.margins.left;
     const right = doc.page.width - doc.page.margins.right;
 
     const headerTopY = doc.page.margins.top;
-    let headerBottomY = headerTopY; // acompanhar até onde o cabeçalho vai
+    let headerBottomY = headerTopY;
 
     // Logo (opcional)
     try {
       if (LOGO_URL) {
         const logoBuffer = await fetchBuffer(LOGO_URL);
-        const logoWidth = 70; // ajuste se quiser maior/menor
+        const logoWidth = 70;
         const logoX = left;
         const logoY = headerTopY;
         doc.image(logoBuffer, logoX, logoY, { width: logoWidth });
-        headerBottomY = Math.max(headerBottomY, logoY + logoWidth * 0.9); // altura aproximada
+        headerBottomY = Math.max(headerBottomY, logoY + logoWidth * 0.9);
       }
     } catch (e) {
-      // Se falhar o download do logo, segue sem logo
+      // segue sem logo
     }
 
     // Títulos (centralizados)
@@ -193,7 +157,7 @@ async function makePatrimonioPDF({ patrimonio, arquivos, reportUrl, titulo = "Re
       .text(titulo, { align: "center" });
     headerBottomY = Math.max(headerBottomY, doc.y);
 
-    // QR Code (opcional) no topo direito
+    // QR Code (opcional)
     if (reportUrl) {
       try {
         const qrDataUrl = await QRCode.toDataURL(reportUrl, { margin: 1, scale: 4 });
@@ -207,18 +171,18 @@ async function makePatrimonioPDF({ patrimonio, arquivos, reportUrl, titulo = "Re
           .text("Acesse o relatório", qrX, qrY + qrSize + 4, { width: qrSize, align: "center" });
         headerBottomY = Math.max(headerBottomY, qrY + qrSize + 20);
       } catch (e) {
-        // segue sem QR se der erro
+        // sem QR
       }
     }
 
-    // Linha separadora e espaçamento maior para o conteúdo
+    // Linha e espaçamento
     const sepY = Math.max(headerBottomY + 8, headerTopY + 60);
     doc.moveTo(left, sepY)
        .lineTo(pageWidth - doc.page.margins.right, sepY)
        .stroke();
 
-    // 👉 Força o conteúdo a começar abaixo de um piso mínimo (ex.: 160px)
-    const MIN_CONTENT_TOP = headerTopY + 160; // ajuste se quiser mais/menos espaço
+    // Piso mínimo para início do conteúdo
+    const MIN_CONTENT_TOP = headerTopY + 160;
     let contentStartY = Math.max(sepY + 20, MIN_CONTENT_TOP);
     doc.y = contentStartY;
     let y = doc.y;
@@ -227,7 +191,8 @@ async function makePatrimonioPDF({ patrimonio, arquivos, reportUrl, titulo = "Re
     y = drawLabelValue(doc, "CPR:", patrimonio.DS_CPR || String(patrimonio.ID_CPR), 50, y);
     y = drawLabelValue(doc, "BPM:", patrimonio.DS_BPM || String(patrimonio.ID_BPM), 50, y);
     y = drawLabelValue(doc, "PCS:", patrimonio.DS_PCS || String(patrimonio.ID_PCS), 50, y);
-    y = drawLabelValue(doc, "Localização:", patrimonio.TX_LOCALIZACAO, 50, y);
+    y = drawLabelValue(doc, "Localização (URL):", patrimonio.TX_LOCALIZACAO, 50, y);
+    y = drawLabelValue(doc, "Endereço:", patrimonio.TX_ENDERECO, 50, y); // <= NOVO CAMPO NO RELATÓRIO
     y = drawLabelValue(doc, "Módulo localizado:", patrimonio.ST_MODULO_LOCALIZADO ? "Sim" : "Não", 50, y);
     y = drawLabelValue(doc, "Base localizada:", patrimonio.ST_BASE_LOCALIZADO ? "Sim" : "Não", 50, y);
     y = drawLabelValue(doc, "Torre localizada:", patrimonio.ST_TORRE_LOCALIZADO ? "Sim" : "Não", 50, y);
@@ -249,7 +214,7 @@ async function makePatrimonioPDF({ patrimonio, arquivos, reportUrl, titulo = "Re
       }
     }
 
-    // ====== Rodapé ======
+    // Rodapé
     doc.moveTo(doc.page.margins.left, doc.page.height - doc.page.margins.bottom - 20)
       .lineTo(doc.page.width - doc.page.margins.right, doc.page.height - doc.page.margins.bottom - 20).stroke();
     doc.font("Helvetica").fontSize(8).text(`Gerado em: ${new Date().toLocaleString("pt-BR")}`, { align: "right" });
@@ -324,7 +289,7 @@ app.get("/listar-todos-patrimonios", async (req, res) => {
       LEFT JOIN TB_CPR c ON p.ID_CPR = c.ID_CPR
       LEFT JOIN TB_BPM b ON p.ID_BPM = b.ID_BPM
       LEFT JOIN TB_PCS s ON p.ID_PCS = s.ID_PCS
-      ORDER BY c.ID_CPR
+      ORDER BY c.ID_CPR, b.ID_BPM
     `);
     sendResponse(res, true, rows.length ? "Lista carregada." : "Nenhum patrimônio encontrado.",
                  rows.length ? "success" : "info", rows);
@@ -347,7 +312,7 @@ app.get("/consultar-patrimonio", async (req, res) => {
     connection = await pool.getConnection();
 
     const [rows] = await connection.execute(
-      `SELECT ID_PATRIMONIO, TX_LOCALIZACAO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO
+      `SELECT ID_PATRIMONIO, TX_LOCALIZACAO, TX_ENDERECO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO
        FROM TB_PATRIMONIO
        WHERE ID_CPR = ? AND ID_BPM = ? AND ID_PCS = ?
        LIMIT 1`,
@@ -378,7 +343,7 @@ app.get("/consultar-patrimonio", async (req, res) => {
 // Cadastra ou atualiza patrimônio (upload Base64)
 app.post("/cadastrar-patrimonio", async (req, res) => {
   const {
-    ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO,
+    ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, TX_ENDERECO,
     ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO,
     TX_OBSERVACAO, arquivos = []
   } = req.body;
@@ -399,16 +364,16 @@ app.post("/cadastrar-patrimonio", async (req, res) => {
       patrimonioId = existente[0].ID_PATRIMONIO;
       await connection.execute(
         `UPDATE TB_PATRIMONIO
-         SET TX_LOCALIZACAO=?, ST_MODULO_LOCALIZADO=?, ST_BASE_LOCALIZADO=?, ST_TORRE_LOCALIZADO=?, TX_OBSERVACAO=?
+         SET TX_LOCALIZACAO=?, TX_ENDERECO=?, ST_MODULO_LOCALIZADO=?, ST_BASE_LOCALIZADO=?, ST_TORRE_LOCALIZADO=?, TX_OBSERVACAO=?
          WHERE ID_PATRIMONIO=?`,
-        [TX_LOCALIZACAO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO, patrimonioId]
+        [TX_LOCALIZACAO, TX_ENDERECO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO, patrimonioId]
       );
       msg = "Patrimônio atualizado com sucesso!";
     } else {
       const [result] = await connection.execute(
-        `INSERT INTO TB_PATRIMONIO (ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO]
+        `INSERT INTO TB_PATRIMONIO (ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, TX_ENDERECO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, TX_ENDERECO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO]
       );
       patrimonioId = result.insertId;
       msg = "Patrimônio cadastrado com sucesso!";
