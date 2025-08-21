@@ -212,6 +212,9 @@ async function makePatrimonioPDF({ patrimonio, arquivos, reportUrl, titulo = "Re
     y = drawLabelValue(doc, "CPR:", patrimonio.DS_CPR || String(patrimonio.ID_CPR), 50, y);
     y = drawLabelValue(doc, "BPM:", patrimonio.DS_BPM || String(patrimonio.ID_BPM), 50, y);
     y = drawLabelValue(doc, "PCS:", patrimonio.DS_PCS || String(patrimonio.ID_PCS), 50, y);
+    y = drawLabelValue(doc, "N. Tombamento Módulo:", patrimonio.NU_TOMBAMENTO_MODULO || String(patrimonio.NU_TOMBAMENTO_MODULO), 50, y);
+    y = drawLabelValue(doc, "N. Tombamento Torre:", patrimonio.NU_TOMBAMENTO_TORRE || String(patrimonio.NU_TOMBAMENTO_TORRE), 50, y);
+    y = drawLabelValue(doc, "PCS:", patrimonio.DS_PCS || String(patrimonio.ID_PCS), 50, y);
     y = drawLabelValue(doc, "Localização (URL):", patrimonio.TX_LOCALIZACAO, 50, y);
     y = drawLabelValue(doc, "Endereço:", patrimonio.TX_ENDERECO, 50, y); // <= NOVO CAMPO NO RELATÓRIO
     y = drawLabelValue(doc, "Módulo localizado:", patrimonio.ST_MODULO_LOCALIZADO ? "Sim" : "Não", 50, y);
@@ -421,7 +424,7 @@ app.get("/consultar-patrimonio", async (req, res) => {
     connection = await pool.getConnection();
 
     const [rows] = await connection.execute(
-      `SELECT ID_PATRIMONIO, TX_LOCALIZACAO, TX_ENDERECO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO
+      `SELECT ID_PATRIMONIO, TX_LOCALIZACAO, TX_ENDERECO, NU_TOMBAMENTO_MODULO, NU_TOMBAMENTO_TORRE, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO
        FROM TB_PATRIMONIO
        WHERE ID_CPR = ? AND ID_BPM = ? AND ID_PCS = ?
        LIMIT 1`,
@@ -452,7 +455,7 @@ app.get("/consultar-patrimonio", async (req, res) => {
 // Cadastra ou atualiza patrimônio (upload Base64)
 app.post("/cadastrar-patrimonio", async (req, res) => {
   const {
-    ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, TX_ENDERECO,
+    ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, TX_ENDERECO, NU_TOMBAMENTO_MODULO, NU_TOMBAMENTO_TORRE,
     ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO,
     TX_OBSERVACAO, arquivos = []
   } = req.body;
@@ -473,16 +476,17 @@ app.post("/cadastrar-patrimonio", async (req, res) => {
       patrimonioId = existente[0].ID_PATRIMONIO;
       await connection.execute(
         `UPDATE TB_PATRIMONIO
-         SET TX_LOCALIZACAO=?, TX_ENDERECO=?, ST_MODULO_LOCALIZADO=?, ST_BASE_LOCALIZADO=?, ST_TORRE_LOCALIZADO=?, TX_OBSERVACAO=?
+         SET TX_LOCALIZACAO=?, TX_ENDERECO=?, NU_TOMBAMENTO_MODULO=?, NU_TOMBAMENTO_TORRE=?, ST_MODULO_LOCALIZADO=?, 
+         ST_BASE_LOCALIZADO=?, ST_TORRE_LOCALIZADO=?, TX_OBSERVACAO=?
          WHERE ID_PATRIMONIO=?`,
-        [TX_LOCALIZACAO, TX_ENDERECO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO, patrimonioId]
+        [TX_LOCALIZACAO, TX_ENDERECO, NU_TOMBAMENTO_MODULO, NU_TOMBAMENTO_TORRE, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO, patrimonioId]
       );
       msg = "Patrimônio atualizado com sucesso!";
     } else {
       const [result] = await connection.execute(
-        `INSERT INTO TB_PATRIMONIO (ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, TX_ENDERECO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO)
+        `INSERT INTO TB_PATRIMONIO (ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, TX_ENDERECO, NU_TOMBAMENTO_MODULO, NU_TOMBAMENTO_TORRE, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, TX_ENDERECO, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO]
+        [ID_CPR, ID_BPM, ID_PCS, TX_LOCALIZACAO, TX_ENDERECO, NU_TOMBAMENTO_MODULO, NU_TOMBAMENTO_TORRE, ST_MODULO_LOCALIZADO, ST_BASE_LOCALIZADO, ST_TORRE_LOCALIZADO, TX_OBSERVACAO]
       );
       patrimonioId = result.insertId;
       msg = "Patrimônio cadastrado com sucesso!";
