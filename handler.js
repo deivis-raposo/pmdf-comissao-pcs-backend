@@ -217,8 +217,8 @@ async function makePatrimonioPDF({ patrimonio, arquivos, reportUrl, titulo = "Re
     y = drawLabelValue(doc, "PCS:", patrimonio.DS_PCS || String(patrimonio.ID_PCS), 50, y);
     y = drawLabelValue(doc, "Localização (URL):", patrimonio.TX_LOCALIZACAO, 50, y);
     y = drawLabelValue(doc, "Endereço:", patrimonio.TX_ENDERECO, 50, y); // <= NOVO CAMPO NO RELATÓRIO
-    y = drawLabelValue(doc, "Módulo localizado:", patrimonio.ST_MODULO_LOCALIZADO ? "Sim" : "Não", 50, y);
     y = drawLabelValue(doc, "Base localizada:", patrimonio.ST_BASE_LOCALIZADO ? "Sim" : "Não", 50, y);
+    y = drawLabelValue(doc, "Módulo localizado:", patrimonio.ST_MODULO_LOCALIZADO ? "Sim" : "Não", 50, y);
     y = drawLabelValue(doc, "Torre localizada:", patrimonio.ST_TORRE_LOCALIZADO ? "Sim" : "Não", 50, y);
     y = drawLabelValue(doc, "Observações:", patrimonio.TX_OBSERVACAO || String(patrimonio.TX_OBSERVACAO), 50, y);
 
