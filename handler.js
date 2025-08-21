@@ -57,10 +57,31 @@ const sendResponse = (res, success, message, severity, data = null, statusCode =
 // Helpers para o PDF
 // ---------------------------------------------------------------------
 function drawLabelValue(doc, label, value, x, y, labelWidth = 140, lineHeight = 18) {
-  doc.font("Helvetica-Bold").fontSize(10).text(label, x, y, { width: labelWidth });
-  doc.font("Helvetica").fontSize(10).text(value ?? "-", x + labelWidth + 6, y);
-  return y + lineHeight;
+  const right = doc.page.width - doc.page.margins.right;
+  const gap = 6;
+
+  const labelX = x;
+  const valueX = x + labelWidth + gap;
+
+  // largura disponível para o texto do valor até a margem direita
+  const valueWidth = Math.max(10, right - valueX);
+
+  // Label (geralmente 1 linha)
+  doc.font("Helvetica-Bold").fontSize(10)
+     .text(label, labelX, y, { width: labelWidth });
+
+  // Valor (pode quebrar em múltiplas linhas)
+  doc.font("Helvetica").fontSize(10)
+     .text((value ?? "-").toString(), valueX, y, { width: valueWidth });
+
+  // doc.y agora está no final do bloco de "valor"
+  // Avançamos o cursor respeitando a altura real renderizada
+  const nextY = Math.max(y + lineHeight, doc.y);
+
+  // pequeno espaçamento extra entre linhas (opcional)
+  return nextY + 4;
 }
+
 
 async function fetchBuffer(url) {
   const res = await axiosHttp.get(url, { responseType: "arraybuffer" });
@@ -196,12 +217,7 @@ async function makePatrimonioPDF({ patrimonio, arquivos, reportUrl, titulo = "Re
     y = drawLabelValue(doc, "Módulo localizado:", patrimonio.ST_MODULO_LOCALIZADO ? "Sim" : "Não", 50, y);
     y = drawLabelValue(doc, "Base localizada:", patrimonio.ST_BASE_LOCALIZADO ? "Sim" : "Não", 50, y);
     y = drawLabelValue(doc, "Torre localizada:", patrimonio.ST_TORRE_LOCALIZADO ? "Sim" : "Não", 50, y);
-
-    // ====== Observações ======
-    doc.moveDown(0.8);
-    doc.font("Helvetica-Bold").fontSize(11).text("Observações:");
-    doc.font("Helvetica").fontSize(10).text(patrimonio.TX_OBSERVACAO || "-", { align: "left" });
-    doc.moveDown(0.6);
+    y = drawLabelValue(doc, "Observações:", patrimonio.TX_OBSERVACAO || String(patrimonio.TX_OBSERVACAO), 50, y);
 
     // ====== Galeria de imagens: 2 por página ======
     if (arquivos && arquivos.length) {
@@ -224,6 +240,99 @@ async function makePatrimonioPDF({ patrimonio, arquivos, reportUrl, titulo = "Re
 }
 
 // -------------------- ENDPOINTS -------------------- //
+
+
+app.get("/qtdCPRsVisitados", async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`SELECT DISTINCT ID_CPR AS CPR_VISITADOS FROM TB_PATRIMONIO`);
+    sendResponse(res, true, "Lista de CPRs já visitados carregada com sucesso.", "success", rows);
+  } catch (error) {
+    console.error("Erro ao listar CPRs Visitados:", error);
+    sendResponse(res, false, "Erro ao carregar CPRs já visitados.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.get("/qtdBPMsVisitados", async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`SELECT DISTINCT PAT.ID_BPM, BPM.DS_BPM FROM TB_PATRIMONIO PAT, TB_BPM BPM WHERE PAT.ID_BPM = BPM.ID_BPM`);
+    sendResponse(res, true, "Lista de BPMs já visitados carregada com sucesso.", "success", rows);
+  } catch (error) {
+    console.error("Erro ao listar BPMs Visitados:", error);
+    sendResponse(res, false, "Erro ao carregar BPMs já visitados.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.get("/qtdPCSsRegistrados", async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`
+        SELECT DISTINCT PAT.ID_CPR, CPR.DS_CPR, PAT.ID_BPM, BPM.DS_BPM, PAT.ID_PCS, PCS.DS_PCS 
+        FROM TB_PATRIMONIO PAT, TB_PCS PCS, TB_CPR CPR, TB_BPM BPM
+        WHERE 
+        PAT.ID_CPR = CPR.ID_CPR AND
+        PAT.ID_BPM = BPM.ID_BPM AND
+        PAT.ID_PCS = PCS.ID_PCS
+        ORDER BY PAT.ID_CPR, PAT.ID_BPM, PAT.ID_PCS
+      `);
+    sendResponse(res, true, "Lista de PCSs já registrados carregada com sucesso.", "success", rows);
+  } catch (error) {
+    console.error("Erro ao listar PCSs já registrados:", error);
+    sendResponse(res, false, "Erro ao carregar PCSs já registrados.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.get("/qtdBasesLocalizadas", async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`SELECT ID_CPR, ID_BPM, ID_PCS, ST_BASE_LOCALIZADO FROM TB_PATRIMONIO WHERE ST_BASE_LOCALIZADO = 1`);
+    sendResponse(res, true, "Lista de Bases localizadas carregada com sucesso.", "success", rows);
+  } catch (error) {
+    console.error("Erro ao listar Bases Localizadas:", error);
+    sendResponse(res, false, "Erro ao carregar Bases Localizadas.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.get("/qtdModulosLocalizados", async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`SELECT ID_CPR, ID_BPM, ID_PCS, ST_MODULO_LOCALIZADO FROM TB_PATRIMONIO WHERE ST_MODULO_LOCALIZADO = 1`);
+    sendResponse(res, true, "Lista de Modulos localizadas carregada com sucesso.", "success", rows);
+  } catch (error) {
+    console.error("Erro ao listar Modulos Localizados:", error);
+    sendResponse(res, false, "Erro ao carregar Modulos localizados.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+app.get("/qtdTorresLocalizadas", async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const [rows] = await connection.execute(`SELECT ID_CPR, ID_BPM, ID_PCS, ST_TORRE_LOCALIZADO FROM TB_PATRIMONIO WHERE ST_TORRE_LOCALIZADO = 1`);
+    sendResponse(res, true, "Lista de Torres localizadas carregada com sucesso.", "success", rows);
+  } catch (error) {
+    console.error("Erro ao listar Torres Localizados:", error);
+    sendResponse(res, false, "Erro ao carregar Torres localizados.", "error", null, 500);
+  } finally {
+    if (connection) connection.release();
+  }
+});
 
 // Lista todos CPRs
 app.get("/listar-todos-cpr", async (req, res) => {
