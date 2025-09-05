@@ -1063,9 +1063,10 @@ app.post("/gerar-relatorio-patrimonio", async (req, res) => {
         Bucket: BUCKET_NAME,
         Key: reportKey,
         Body: pdfBuffer,
-        ContentType: "application/pdf",
+        ContentType: 'application/pdf',
+        ContentDisposition: `inline; filename="${reportKey}.pdf"`,
         ACL: "public-read",
-        CacheControl: "no-cache"
+        CacheControl: "no-store"
       })
     );
 
@@ -1166,21 +1167,19 @@ app.post("/gerar-relatorio-bpm", async (req, res) => {
     });
 
     // Envia para o S3 (público), sobrescrevendo
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: BUCKET_NAME,
-        Key: reportKey,
-        Body: pdfBuffer,
-        ContentType: "application/pdf",
-        ACL: "public-read",
-        CacheControl: "no-cache"
-      })
-    );
-
-    return sendResponse(res, true, "Relatório do BPM gerado com sucesso.", "success", {
-      url: reportPublicUrl,
-      totalPatrimonios: itens.length
-    });
+    await s3.send(new PutObjectCommand({
+    Bucket: BUCKET_NAME,
+    Key: reportKey,
+    Body: pdfBuffer,
+    ContentType: 'application/pdf',
+    ContentDisposition: `inline; filename="relatorio_bpm_${bpm}.pdf"`,
+    ACL: 'public-read',           // se o bucket não tiver policy pública
+    CacheControl: 'no-store'      // evita cache teimoso no iOS
+  }));
+  return sendResponse(res, true, "Relatório do BPM gerado com sucesso.", "success", {
+    url: reportPublicUrl,
+    totalPatrimonios: itens.length
+  });
   } catch (error) {
     console.error("Erro ao gerar relatório do BPM:", error);
     return sendResponse(
